@@ -44,6 +44,19 @@ def single_qa():
     question = st.text_input("請輸入您的問題")
     # 選擇要搜尋的 Top-k 文件數
     top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
+    # 允許使用者在側邊欄自訂 Prompt 範本
+    default_prompt = """根據以下相關文字內容，回答使用者的問題。
+只使用提供的文字內容來回答問題，如果文字內容中沒有相關資訊，請說明無法回答。
+請使用繁體中文回答，請針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆。
+請盡量以提供的文字內容作為說明，不要進行過多的修改。
+請利用相關文字內容中實際有出現的來源，提供引用來源註記（格式: 來源: 檔案名, 範圍: 頁碼範圍】）標示參考到的相關文字內容之資料來源。
+
+相關文字內容：
+{context_text}
+
+使用者問題：{question}
+"""
+    custom_prompt = st.sidebar.text_area("修改 Prompt 範本", default_prompt, height=300)
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -75,18 +88,8 @@ def single_qa():
                 f"========【以下文字來源: {item['metadata'].get('source', '未知')}, 範圍: {item['metadata'].get('page_range', '')}】========\n{item['content']} \n\n ================"
                 for item in formatted_results
             ])
-            # 組成 prompt
-            prompt = f"""根據以下相關文字內容，回答使用者的問題。
-只使用提供的文字內容來回答問題，如果文字內容中沒有相關資訊，請說明無法回答。
-請使用繁體中文回答，請針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆。
-請盡量以提供的文字內容作為說明，不要進行過多的修改。
-請利用相關文字內容中實際有出現的來源，提供引用來源註記（格式: 來源: 檔案名, 範圍: 頁碼範圍】）標示參考到的相關文字內容之資料來源。
-
-相關文字內容：
-{context_text}
-
-使用者問題：{question}
-"""
+            # 組成 prompt，使用側邊欄自訂範本
+            prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
             response = openai.chat.completions.create(
