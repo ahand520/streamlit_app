@@ -64,6 +64,13 @@ def single_qa():
         height=300,
         key="custom_prompt_template"
     )
+    # 在側邊欄選擇 Vector DB 資料夾
+    db_base = os.path.join(os.path.dirname(__file__), "vector_db")
+    try:
+        db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
+    except FileNotFoundError:
+        db_folders = []
+    selected_db = st.sidebar.selectbox("選擇向量資料庫資料夾", db_folders)
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -74,10 +81,11 @@ def single_qa():
                 openai_api_key=st.secrets["OPENAI_API_KEY"],
                 model="text-embedding-3-large"
             )
+            # 根據使用者選擇的子資料夾組成 db_path
             db_path = os.path.join(
                 os.path.dirname(__file__),
                 "vector_db",
-                "text-embedding-3-large_c1000_o200_TP"
+                selected_db
             )
             store = FAISS.load_local(db_path, embeddings, allow_dangerous_deserialization=True)
             # 取得文件與相似度分數
