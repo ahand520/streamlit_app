@@ -87,11 +87,13 @@ def single_qa():
 """
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
-            response = openai.ChatCompletion.create(
+            response = openai.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role":"user","content":prompt}]
+                messages=[{"role":"user","content":prompt}],
+                temperature=0.0
             )
             answer = response.choices[0].message.content
+            
         st.header("回答")
         st.write(answer)
         st.subheader("使用的 Prompt")
