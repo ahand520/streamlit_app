@@ -42,6 +42,8 @@ def browse_json():
 def single_qa():
     st.title("單次問答")
     question = st.text_input("請輸入您的問題")
+    # 選擇要搜尋的 Top-k 文件數
+    top_k = st.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -59,7 +61,7 @@ def single_qa():
             )
             store = FAISS.load_local(db_path, embeddings, allow_dangerous_deserialization=True)
             # 取得文件與相似度分數
-            results = store.similarity_search_with_score(question, k=15)
+            results = store.similarity_search_with_score(question, k=top_k)
             # 格式化結果
             formatted_results = []
             for doc, score in results:
@@ -100,7 +102,7 @@ def single_qa():
         st.code(prompt)
 
 def main():
-    mode = st.sidebar.selectbox("選擇功能", ["JSON 問題瀏覽", "單次問答"])
+    mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽"])
     if mode == "JSON 問題瀏覽":
         browse_json()
     else:
