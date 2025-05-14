@@ -45,6 +45,7 @@ def single_qa():
     # 選擇要搜尋的 Top-k 文件數
     top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
     # 允許使用者在側邊欄自訂 Prompt 範本
+    st.sidebar.header("Prompt 設定")
     default_prompt = """根據以下相關文字內容，回答使用者的問題。
 只使用提供的文字內容來回答問題，如果文字內容中沒有相關資訊，請說明無法回答。
 請使用繁體中文回答，請針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆。
@@ -56,7 +57,13 @@ def single_qa():
 
 使用者問題：{question}
 """
-    custom_prompt = st.sidebar.text_area("修改 Prompt 範本", default_prompt, height=300)
+    # 加入 key 以確保唯一性，並顯示在 Prompt 設定區塊下
+    custom_prompt = st.sidebar.text_area(
+        label="修改 Prompt 範本",
+        value=default_prompt,
+        height=300,
+        key="custom_prompt_template"
+    )
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -70,7 +77,7 @@ def single_qa():
             db_path = os.path.join(
                 os.path.dirname(__file__),
                 "vector_db",
-                "text-embedding-3-large_c1000_o200"
+                "text-embedding-3-large_c1000_o200_TP"
             )
             store = FAISS.load_local(db_path, embeddings, allow_dangerous_deserialization=True)
             # 取得文件與相似度分數
