@@ -3,3 +3,4 @@ openai
 langchain
 faiss-cpu
 langchain-community
+tiktoken
