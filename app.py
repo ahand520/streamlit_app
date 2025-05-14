@@ -43,7 +43,7 @@ def single_qa():
     st.title("單次問答")
     question = st.text_input("請輸入您的問題")
     # 選擇要搜尋的 Top-k 文件數
-    top_k = st.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
+    top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -103,7 +103,7 @@ def single_qa():
 
 def main():
     mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽"])
-    if mode == "JSON 問題瀏覽":
+    if mode == "JSON 批次結果瀏覽":
         browse_json()
     else:
         single_qa()
