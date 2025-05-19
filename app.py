@@ -14,7 +14,7 @@ def load_json_data(filename):
 
 def browse_json():
     st.title("JSON 問題瀏覽")
-    uploaded_file = st.sidebar.file_uploader("上傳 JSON 檔案", type=["json"])
+    uploaded_file = st.sidebar.file_uploader("上傳 JSON 檔案 (檔名勿帶有中文)", type=["json"])
     if uploaded_file is None:
         st.info("請在側邊欄上傳 JSON 檔案")
         return
