@@ -35,9 +35,10 @@ def browse_json():
     st.header("回答")
     st.write(item.get("answer", ""))
     st.header("相關內容")
-    for ctx in item.get("context_text", []):
-        st.text(ctx)
-        st.markdown("-------------------------------------------")
+    st.write(item.get("context_texts", ""))
+    #for ctx in item.get("context_text", []):
+    #    st.text(ctx)
+    #    st.markdown("-------------------------------------------")
 
 def single_qa():
     st.title("單次問答")
