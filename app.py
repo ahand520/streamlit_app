@@ -47,16 +47,19 @@ def single_qa():
     top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
     # 允許使用者在側邊欄自訂 Prompt 範本
     st.sidebar.header("Prompt 設定")
-    default_prompt = """根據以下相關文字內容，回答使用者的問題。
-只使用提供的文字內容來回答問題，如果文字內容中沒有相關資訊，請說明無法回答。
-請使用繁體中文回答，請針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆。
-請盡量以提供的文字內容作為說明，不要進行過多的修改。
-請利用相關文字內容中實際有出現的來源，提供引用來源註記（格式: 來源: 檔案名, 範圍: 頁碼範圍】）標示參考到的相關文字內容之資料來源。
-
-相關文字內容：
+    default_prompt = """相關文字內容：
+``` 
 {context_text}
+```
 
 使用者問題：{question}
+
+指令：
+你是一個知識管理系統搜尋助理，根據「相關文字內容」，回答使用者的問題。回答問題時請注意以下重點：
+1.只使用提供的「相關文字內容」來回答問題，如果文字內容中沒有相關資訊，請說明無法回答，沒有明確關聯之文字也不要引用。
+2.使用繁體中文回答，針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆
+3.說明盡量以原始內容進行引述，不要修改原始文字以避免表達錯誤。
+4.說明時附上其提供之來源標記，格式：(來源編號： ,來源檔案：xxxxx)。
 """
     # 加入 key 以確保唯一性，並顯示在 Prompt 設定區塊下
     custom_prompt = st.sidebar.text_area(
@@ -99,19 +102,43 @@ def single_qa():
                     "metadata": doc.metadata,
                     "score": score
                 })
-            # 組成 context_text，包括來源與頁碼範圍
-            context_text = "\n\n".join([
-                f"========【以下文字來源: {item['metadata'].get('source', '未知')}, 範圍: {item['metadata'].get('page_range', '')}】========\n{item['content']} \n\n ================"
-                for item in formatted_results
-            ])
-            # 組成 prompt，使用側邊欄自訂範本
-            prompt = custom_prompt.format(context_text=context_text, question=question)
+            # 構建 context_items 與 context_text，使用 JSON 格式
+            context_items = [
+                {
+                    "來源編號": idx + 1,
+                    "文字內容": item["content"],
+                    "來源標記": {
+                        "來源檔案": item["metadata"].get("source", "未知"),
+                        "頁數起迄": item["metadata"].get("page_range", "未知")
+                    }
+                }
+                for idx, item in enumerate(formatted_results)
+            ]
+            context_text = json.dumps(
+                context_items, ensure_ascii=False, indent=2, separators=(',', ': ')
+            )
+            # 組成 prompt，固定範本與指令邏輯
+            prompt = f"""
+相關文字內容：
+``` 
+{context_text}
+```
+
+使用者問題：{question}
+
+指令：
+你是一個知識管理系統搜尋助理，根據「相關文字內容」，回答使用者的問題。回答問題時請注意以下重點：
+1.只使用提供的「相關文字內容」來回答問題，如果文字內容中沒有相關資訊，請說明無法回答，沒有明確關聯之文字也不要引用。
+2.使用繁體中文回答，針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆
+3.說明盡量以原始內容進行引述，不要修改原始文字以避免表達錯誤。
+4.說明時附上其提供之來源標記，格式：(來源編號： ,來源檔案：xxxxx)。
+"""
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
             response = openai.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[{"role":"user","content":prompt}],
-                temperature=0.0
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
             )
             answer = response.choices[0].message.content
             
