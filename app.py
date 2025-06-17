@@ -44,7 +44,7 @@ def single_qa():
     st.title("單次問答")
     question = st.text_input("請輸入您的問題")
     # 選擇要搜尋的 Top-k 文件數
-    top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 10, 15], index=2)
+    top_k = st.sidebar.selectbox("選擇相似文件數量 (Top-k)", [5, 6, 10, 15], index=1)
     # 允許使用者在側邊欄自訂 Prompt 範本
     st.sidebar.header("Prompt 設定")
     default_prompt = """相關文字內容：
@@ -70,20 +70,38 @@ def single_qa():
     )
     # 在側邊欄選擇 Vector DB 資料夾
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
+    # 建立英文資料夾名稱與中文名稱對照表
+    folder_name_map = {
+        "text-embedding-3-large_c1000_o200_DOT": "賦稅署",
+        "text-embedding-3-large_c1000_o200_KS": "高雄國稅局",
+        "text-embedding-3-large_c1000_o200_TP": "台北國稅局",
+        "e5-mistral-7b-instruct_c500_o100": "北區國稅局"
+    }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
     except FileNotFoundError:
         db_folders = []
-    selected_db = st.sidebar.selectbox("選擇向量資料庫資料夾", db_folders)
+    # 只顯示有對應中文名稱的資料夾
+    display_names = [folder_name_map.get(name, name) for name in db_folders]
+    # 建立中文名稱到英文資料夾名稱的反查表
+    display_to_folder = {folder_name_map.get(name, name): name for name in db_folders}
+    selected_display = st.sidebar.selectbox("選擇向量資料庫資料夾", display_names)
+    selected_db = display_to_folder[selected_display]
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
             return
         with st.spinner("搜尋中..."):
             # 使用 OpenAI 進行 embedding
-            embeddings = OpenAIEmbeddings(
+            from custom_embeddings import EncodingFixedEmbeddings
+                
+            # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
+            embeddings = EncodingFixedEmbeddings(
+                openai_api_base="http://10.97.59.123:8000/v1",
                 openai_api_key=st.secrets["OPENAI_API_KEY"],
-                model="text-embedding-3-large"
+                model="intfloat/e5-mistral-7b-instruct",
+                show_progress_bar=True  # 顯示進度列
+                #model="text-embedding-3-large"
             )
             # 根據使用者選擇的子資料夾組成 db_path
             db_path = os.path.join(
@@ -117,26 +135,13 @@ def single_qa():
             context_text = json.dumps(
                 context_items, ensure_ascii=False, indent=2, separators=(',', ': ')
             )
-            # 組成 prompt，固定範本與指令邏輯
-            prompt = f"""
-相關文字內容：
-``` 
-{context_text}
-```
-
-使用者問題：{question}
-
-指令：
-你是一個知識管理系統搜尋助理，根據「相關文字內容」，回答使用者的問題。回答問題時請注意以下重點：
-1.只使用提供的「相關文字內容」來回答問題，如果文字內容中沒有相關資訊，請說明無法回答，沒有明確關聯之文字也不要引用。
-2.使用繁體中文回答，針對問題中的各種可能答案，利用參考的文字內容提供詳盡、完整、條理清晰的回覆
-3.說明盡量以原始內容進行引述，不要修改原始文字以避免表達錯誤。
-4.說明時附上其提供之來源標記，格式：(來源編號： ,來源檔案：xxxxx)。
-"""
+            # 組成 prompt，使用自訂或預設 Prompt 範本
+            prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
+            openai.base_url = "http://10.97.59.123:8000/v1/"
             response = openai.chat.completions.create(
-                model="gpt-4o-mini",
+                model="google/gemma-3-1b-it",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
