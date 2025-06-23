@@ -9,13 +9,13 @@ class EncodingFixedEmbeddings(OpenAIEmbeddings):
     api_key: str = "Empty"
     def __init__(self, openai_api_key, openai_api_base, model, show_progress_bar=True, **kwargs):
         super().__init__(
-            openai_api_key=api_key,
-            base_url=base_url,
+            openai_api_key=openai_api_key,
+            base_url=openai_api_base,
             model=model,
             show_progress_bar=show_progress_bar,
             **kwargs
         )
-        self.api_key = api_key
+        self.api_key = openai_api_key
     """修正編碼問題的 OpenAI Embeddings 類別
     
     這個類別在呼叫 API 之前會確保文字是正確的 UTF-8 編碼，
