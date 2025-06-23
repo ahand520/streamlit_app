@@ -1,0 +1,1 @@
+#!/bin/bash# Set proxy environment variables for docker buildDOCKER_BUILD_ARGS="--build-arg http_proxy=http://sproxy.cht.com.tw:8080 --build-arg https_proxy=http://sproxy.cht.com.tw:8080"# Build the custom Docker image with proxy settingsdocker build $DOCKER_BUILD_ARGS -t streamlit-app:latest .

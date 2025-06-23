@@ -4,6 +4,26 @@ import streamlit as st
 import openai
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
+import toml # 匯入 toml 函式庫
+
+# 載入設定檔
+def load_config():
+    # 更新 config_path 以指向 streamlit_app/.streamlit/config.toml
+    config_path = os.path.join(os.path.dirname(__file__), ".streamlit", "config.toml")
+    if os.path.exists(config_path):
+        return toml.load(config_path)
+    return {}
+
+config = load_config()
+# 取得環境變數，預設為 cloud
+env = os.environ.get("model", "openai")
+
+if env == "local":
+    openai_config = config.get("dev", {})
+else:
+    openai_config = config.get("openai", {})
+
+
 # 載入 JSON 資料
 def load_json_data(filename):
     base_dir = os.path.dirname(__file__)
@@ -72,10 +92,8 @@ def single_qa():
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
     # 建立英文資料夾名稱與中文名稱對照表
     folder_name_map = {
-        "text-embedding-3-large_c1000_o200_DOT": "賦稅署",
-        "text-embedding-3-large_c1000_o200_KS": "高雄國稅局",
-        "text-embedding-3-large_c1000_o200_TP": "台北國稅局",
-        "e5-mistral-7b-instruct_c500_o100": "北區國稅局"
+        "multilingual-e5-large-instruct_c500_o100": "北區國稅局-e5-large",
+        "e5-mistral-7b-instruct_c500_o100": "北區國稅局-e5-mistral"
     }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
@@ -97,9 +115,9 @@ def single_qa():
                 
             # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
             embeddings = EncodingFixedEmbeddings(
-                openai_api_base="http://10.97.59.123:8000/v1",
+                openai_api_base=openai_config.get("base_url"), # 從設定檔讀取
                 openai_api_key=st.secrets["OPENAI_API_KEY"],
-                model="intfloat/e5-mistral-7b-instruct",
+                model=openai_config.get("embedding"), # 從設定檔讀取
                 show_progress_bar=True  # 顯示進度列
                 #model="text-embedding-3-large"
             )
@@ -139,9 +157,9 @@ def single_qa():
             prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
-            openai.base_url = "http://10.97.59.123:8000/v1/"
+            openai.base_url = openai_config.get("base_url") # 從設定檔讀取
             response = openai.chat.completions.create(
-                model="google/gemma-3-1b-it",
+                model=openai_config.get("chat"), # 從設定檔讀取
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
