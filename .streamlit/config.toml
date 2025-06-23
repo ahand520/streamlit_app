@@ -8,12 +8,12 @@ embedding = "intfloat/multilingual-e5-large-instruct"
 chat = "google/gemma-3-1b-it"
 
 [openai]
-base_url=https://api.openai.com/v1
+base_url= "https://api.openai.com/v1"
 embedding = "text-embedding-3-large"
 chat = "gpt-4o-mini"
 
 [OpenRouter]
-base_url=https://openrouter.ai/api/v1
+base_url= "https://openrouter.ai/api/v1"
 embedding = "text-embedding-3-large"
 chat = "google/gemma-3-27b-it:free"
 
