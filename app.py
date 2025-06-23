@@ -112,15 +112,15 @@ def single_qa():
             return
         with st.spinner("搜尋中..."):
             # 使用 OpenAI 進行 embedding
-            from custom_embeddings import EncodingFixedEmbeddings
+            #from custom_embeddings import EncodingFixedEmbeddings
                 
             # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
             embeddings = OpenAIEmbeddings(
                 #openai_api_base=openai_config.get("base_url"), # 從設定檔讀取
                 openai_api_key=st.secrets["OPENAI_API_KEY"],
-                model=openai_config.get("embedding"), # 從設定檔讀取
+                #model=openai_config.get("embedding"), # 從設定檔讀取
                #show_progress_bar=True  # 顯示進度列
-                #model="text-embedding-3-large"
+                model="text-embedding-3-large"
             )
             # 根據使用者選擇的子資料夾組成 db_path
             db_path = os.path.join(
