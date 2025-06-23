@@ -159,6 +159,7 @@ def single_qa():
             # 呼叫 OpenAI ChatCompletion
             openai.api_key = st.secrets["OPENAI_API_KEY"]
             print(openai_config.get("base_url"))
+            print(openai_config.get("chat"))
             openai.base_url = openai_config.get("base_url") # 從設定檔讀取
             response = openai.chat.completions.create(
                 model=openai_config.get("chat"), # 從設定檔讀取

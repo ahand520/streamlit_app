@@ -10,7 +10,7 @@ chat = "google/gemma-3-1b-it"
 [openai]
 base_url= "https://api.openai.com/v1"
 embedding = "text-embedding-3-large"
-chat = "gpt-4o-mini"
+chat = "gpt-4o"
 
 [OpenRouter]
 base_url= "https://openrouter.ai/api/v1"
