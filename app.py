@@ -162,7 +162,7 @@ def single_qa():
             print(openai_config.get("chat"))
             #openai.base_url = openai_config.get("base_url") # 從設定檔讀取
             response = openai.chat.completions.create(
-                model= "gpt-4o" #openai_config.get("chat"), # 從設定檔讀取
+                model= "gpt-4o", #openai_config.get("chat"), # 從設定檔讀取
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
