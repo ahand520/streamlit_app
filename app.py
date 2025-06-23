@@ -160,9 +160,9 @@ def single_qa():
             openai.api_key = st.secrets["OPENAI_API_KEY"]
             print(openai_config.get("base_url"))
             print(openai_config.get("chat"))
-            openai.base_url = openai_config.get("base_url") # 從設定檔讀取
+            #openai.base_url = openai_config.get("base_url") # 從設定檔讀取
             response = openai.chat.completions.create(
-                model=openai_config.get("chat"), # 從設定檔讀取
+                model= "gpt-4o" #openai_config.get("chat"), # 從設定檔讀取
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
