@@ -93,7 +93,8 @@ def single_qa():
     # 建立英文資料夾名稱與中文名稱對照表
     folder_name_map = {
         "multilingual-e5-large-instruct_c500_o100": "北區國稅局-e5-large",
-        "e5-mistral-7b-instruct_c500_o100": "北區國稅局-e5-mistral"
+        "e5-mistral-7b-instruct_c500_o100": "北區國稅局-e5-mistral",
+        "text-embedding-3-large_c500_o100_ND": "北區國稅局-text-embedding-3-large"
     }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
