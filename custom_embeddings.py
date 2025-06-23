@@ -6,6 +6,16 @@ from typing import List
 import json
 
 class EncodingFixedEmbeddings(OpenAIEmbeddings):
+    api_key: str = "Empty"
+    def __init__(self, api_key, base_url, model, show_progress_bar=True, **kwargs):
+        super().__init__(
+            openai_api_key=api_key,
+            base_url=base_url,
+            model=model,
+            show_progress_bar=show_progress_bar,
+            **kwargs
+        )
+        self.api_key = api_key
     """修正編碼問題的 OpenAI Embeddings 類別
     
     這個類別在呼叫 API 之前會確保文字是正確的 UTF-8 編碼，
@@ -26,7 +36,7 @@ class EncodingFixedEmbeddings(OpenAIEmbeddings):
         from openai import OpenAI
         
         # 獲取 API 金鑰和基礎 URL
-        api_key = self.openai_api_key
+        api_key = self.api_key
         api_base = self.openai_api_base or self.client.base_url
         
         # 建立 OpenAI 客戶端
@@ -74,7 +84,7 @@ class EncodingFixedEmbeddings(OpenAIEmbeddings):
         from openai import OpenAI
         
         # 獲取 API 金鑰和基礎 URL
-        api_key = self.openai_api_key
+        api_key = self.api_key
         api_base = self.openai_api_base or self.client.base_url
         
         # 建立 OpenAI 客戶端
