@@ -7,7 +7,7 @@ import json
 
 class EncodingFixedEmbeddings(OpenAIEmbeddings):
     api_key: str = "Empty"
-    def __init__(self, api_key, base_url, model, show_progress_bar=True, **kwargs):
+    def __init__(self, openai_api_key, openai_api_base, model, show_progress_bar=True, **kwargs):
         super().__init__(
             openai_api_key=api_key,
             base_url=base_url,
