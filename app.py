@@ -92,6 +92,7 @@ def single_qa():
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
     # 建立英文資料夾名稱與中文名稱對照表
     folder_name_map = {
+        "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",
         "multilingual-e5-large-instruct_c500_o100": "北區國稅局-e5-large",
         "e5-mistral-7b-instruct_c500_o100": "北區國稅局-e5-mistral",
         "text-embedding-3-large_c500_o100_ND": "北區國稅局-text-embedding-3-large"
@@ -116,11 +117,11 @@ def single_qa():
                 
             # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
             embeddings = OpenAIEmbeddings(
-                #openai_api_base=openai_config.get("base_url"), # 從設定檔讀取
+                openai_api_base=openai_config.get("base_url"), # 從設定檔讀取
                 openai_api_key=st.secrets["OPENAI_API_KEY"],
-                #model=openai_config.get("embedding"), # 從設定檔讀取
-               #show_progress_bar=True  # 顯示進度列
-                model="text-embedding-3-large"
+                model=openai_config.get("embedding"), # 從設定檔讀取
+                #show_progress_bar=True  # 顯示進度列
+                #model="text-embedding-3-large"
             )
             # 根據使用者選擇的子資料夾組成 db_path
             db_path = os.path.join(
@@ -160,9 +161,9 @@ def single_qa():
             openai.api_key = st.secrets["OPENAI_API_KEY"]
             print(openai.base_url)
             print(openai.api_key)
-            #openai.base_url = openai_config.get("base_url") # 從設定檔讀取
+            openai.base_url = openai_config.get("base_url") # 從設定檔讀取
             response = openai.chat.completions.create(
-                model= "gpt-4o", #openai_config.get("chat"), # 從設定檔讀取
+                model= openai_config.get("chat"), # 從設定檔讀取
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
