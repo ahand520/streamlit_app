@@ -2,8 +2,8 @@ import os
 import json
 import streamlit as st
 import openai
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 import toml # 匯入 toml 函式庫
 
 # 載入設定檔
@@ -15,13 +15,20 @@ def load_config():
     return {}
 
 config = load_config()
-# 取得環境變數，預設為 cloud
-env = os.environ.get("model", "openai")
+
+# 取得變數，預設為 cloud
+env = st.secrets.get("RUN_ENV", "cloud")
 
 if env == "local":
-    openai_config = config.get("dev", {})
+    api_base = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
+    chat_model = st.secrets.get("LOCAL_CHAT_MODEL", "google/gemma-3-1b-it")
+    embedding_model = st.secrets.get("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large-instruct")
+    api_key = st.secrets.get("VLLM_API_KEY", "EMPTY")
 else:
-    openai_config = config.get("openai", {})
+    api_base = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    chat_model = st.secrets.get("OPENAI_CHAT_MODEL", "gpt-4o")
+    embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+    api_key = st.secrets.get("OPENAI_API_KEY", "EMPTY")
 
 
 # 載入 JSON 資料
@@ -117,9 +124,9 @@ def single_qa():
                 
             # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
             embeddings = OpenAIEmbeddings(
-                openai_api_base=openai_config.get("base_url"), # 從設定檔讀取
-                openai_api_key=st.secrets["OPENAI_API_KEY"],
-                model=openai_config.get("embedding"), # 從設定檔讀取
+                openai_api_base = api_base, # 從設定檔讀取
+                openai_api_key= api_key,
+                model= embedding_model, # 從設定檔讀取
                 #show_progress_bar=True  # 顯示進度列
                 #model="text-embedding-3-large"
             )
@@ -158,12 +165,12 @@ def single_qa():
             # 組成 prompt，使用自訂或預設 Prompt 範本
             prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
-            openai.api_key = st.secrets["OPENAI_API_KEY"]
-            print(openai.base_url)
+            openai.api_key = api_key
+            print(api_base)
             print(openai.api_key)
-            openai.base_url = openai_config.get("base_url") # 從設定檔讀取
+            openai.base_url = api_base
             response = openai.chat.completions.create(
-                model= openai_config.get("chat"), # 從設定檔讀取
+                model = chat_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
             )
