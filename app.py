@@ -1,20 +1,9 @@
 import os
 import json
 import streamlit as st
-import openai
+from openai import OpenAI
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-import toml # 匯入 toml 函式庫
-
-# 載入設定檔
-def load_config():
-    # 更新 config_path 以指向 streamlit_app/.streamlit/config.toml
-    config_path = os.path.join(os.path.dirname(__file__), ".streamlit", "config.toml")
-    if os.path.exists(config_path):
-        return toml.load(config_path)
-    return {}
-
-config = load_config()
 
 # 取得變數，預設為 cloud
 env = st.secrets.get("RUN_ENV", "cloud")
@@ -24,11 +13,13 @@ if env == "local":
     chat_model = st.secrets.get("LOCAL_CHAT_MODEL", "google/gemma-3-1b-it")
     embedding_model = st.secrets.get("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large-instruct")
     api_key = st.secrets.get("VLLM_API_KEY", "EMPTY")
+    check_embedding_ctx_length = False
 else:
     api_base = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     chat_model = st.secrets.get("OPENAI_CHAT_MODEL", "gpt-4o")
     embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
     api_key = st.secrets.get("OPENAI_API_KEY", "EMPTY")
+    check_embedding_ctx_length = True
 
 
 # 載入 JSON 資料
@@ -119,16 +110,13 @@ def single_qa():
             st.warning("請輸入問題")
             return
         with st.spinner("搜尋中..."):
-            # 使用 OpenAI 進行 embedding
-            #from custom_embeddings import EncodingFixedEmbeddings
-                
-            # 建立 EncodingFixedEmbeddings 時只使用支援的參數               
+            # 進行 embedding
             embeddings = OpenAIEmbeddings(
-                openai_api_base = api_base, # 從設定檔讀取
+                check_embedding_ctx_length = check_embedding_ctx_length,
+                openai_api_base = api_base,
                 openai_api_key= api_key,
-                model= embedding_model, # 從設定檔讀取
+                model= embedding_model,                
                 #show_progress_bar=True  # 顯示進度列
-                #model="text-embedding-3-large"
             )
             # 根據使用者選擇的子資料夾組成 db_path
             db_path = os.path.join(
@@ -165,9 +153,6 @@ def single_qa():
             # 組成 prompt，使用自訂或預設 Prompt 範本
             prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
-            print(api_base)
-            print(openai.api_key)
-            from openai import OpenAI
             client = OpenAI(
                 api_key = api_key,
                 base_url= api_base
