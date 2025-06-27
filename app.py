@@ -165,11 +165,14 @@ def single_qa():
             # 組成 prompt，使用自訂或預設 Prompt 範本
             prompt = custom_prompt.format(context_text=context_text, question=question)
             # 呼叫 OpenAI ChatCompletion
-            openai.api_key = api_key
             print(api_base)
             print(openai.api_key)
-            openai.base_url = api_base
-            response = openai.chat.completions.create(
+            from openai import OpenAI
+            client = OpenAI(
+                api_key = api_key,
+                base_url= api_base
+            )
+            response = client.chat.completions.create(
                 model = chat_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
