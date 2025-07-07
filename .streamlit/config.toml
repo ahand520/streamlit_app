@@ -1,6 +1,8 @@
 [server]
 enableCORS = false
 maxUploadSize = 500
+baseUrlPath = "streamlit"
+enableXsrfProtection = false
 
 
 
