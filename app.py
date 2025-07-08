@@ -6,7 +6,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # 取得變數，預設為 cloud
-env = st.secrets.get("RUN_ENV", "cloud")
+env = st.secrets.get("RUN_ENV", "local")
 
 if env == "local":
     api_base = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
@@ -161,11 +161,16 @@ def single_qa():
                 model = chat_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
+                stream=True
             )
-            answer = response.choices[0].message.content
+            def stream_answer():
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            #answer = response.choices[0].message.content
             
         st.header("回答")
-        st.write(answer)
+        st.write(stream_answer)
         st.subheader("使用的 Prompt")
         st.code(prompt)
 
