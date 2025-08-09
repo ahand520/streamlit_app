@@ -25,7 +25,13 @@ elif env == "cloud":
 else:
     api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
-    chat_model = st.secrets.get("OPENROUTER_CHAT_MODEL", "openai/gpt-oss-20b:free")
+    # 模型選單
+    chat_model_options = [
+        "openai/gpt-oss-20b:free",
+        "google/gemma-3-27b-it:free",
+        "mistralai/mistral-small-3.2-24b-instruct:free"
+    ]
+    chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("OPENROUTER_EMBEDDING_MODEL", "text-embedding-3-large")
     api_key_embedding = st.secrets.get("OPENAI_API_KEY", "EMPTY")
     api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
