@@ -14,11 +14,21 @@ if env == "local":
     embedding_model = st.secrets.get("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large-instruct")
     api_key = st.secrets.get("VLLM_API_KEY", "EMPTY")
     check_embedding_ctx_length = False
-else:
+elif env == "cloud":
+    api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     api_base = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     chat_model = st.secrets.get("OPENAI_CHAT_MODEL", "gpt-4o")
     embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+    api_key_embedding = st.secrets.get("OPENAI_API_KEY", "EMPTY")
     api_key = st.secrets.get("OPENAI_API_KEY", "EMPTY")
+    check_embedding_ctx_length = True
+else:
+    api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
+    chat_model = st.secrets.get("OPENROUTER_CHAT_MODEL", "openai/gpt-oss-20b:free")
+    embedding_model = st.secrets.get("OPENROUTER_EMBEDDING_MODEL", "text-embedding-3-large")
+    api_key_embedding = st.secrets.get("OPENAI_API_KEY", "EMPTY")
+    api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
     check_embedding_ctx_length = True
 
 
@@ -93,7 +103,8 @@ def single_qa():
         "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",
         "multilingual-e5-large-instruct_c500_o100": "北區國稅局-e5-large",
         "e5-mistral-7b-instruct_c500_o100": "北區國稅局-e5-mistral",
-        "text-embedding-3-large_c500_o100_ND": "北區國稅局-text-embedding-3-large"
+        "text-embedding-3-large_c500_o100_ND": "北區國稅局-text-embedding-3-large",
+        "text-embedding-3-large_c1000_o200": "全部-text-embedding-3-large"
     }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
@@ -113,8 +124,8 @@ def single_qa():
             # 進行 embedding
             embeddings = OpenAIEmbeddings(
                 check_embedding_ctx_length = check_embedding_ctx_length,
-                openai_api_base = api_base,
-                openai_api_key= api_key,
+                openai_api_base = api_base_embedding,
+                openai_api_key= api_key_embedding,
                 model= embedding_model,                
                 #show_progress_bar=True  # 顯示進度列
             )
@@ -159,20 +170,39 @@ def single_qa():
             )
             response = client.chat.completions.create(
                 model = chat_model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": "你是一個知識管理系統搜尋助理.推理過程請用繁體中文 Reasoning: low."},
+                    {"role": "user", "content": prompt}
+                    ],
                 temperature=0.0,
                 stream=True
             )
+            #answer = response.choices[0].message
+            #def stream_answer():
+            #    for chunk in response:
+            #        if chunk.choices and chunk.choices[0].delta.content:
+            #            yield chunk.choices[0].delta.content
+            #answer = response.choices[0].message
             def stream_answer():
                 for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
-            #answer = response.choices[0].message.content
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta
+
+                        # 處理推理內容（reasoning_content）
+                        r = getattr(delta, "reasoning", None)
+                        if r:
+                            yield r
+
+                        # 處理最終答案（content）
+                        if delta.content:
+                            yield delta.content
             
         st.header("回答")
-        st.write(stream_answer)
+        st.write(stream_answer)        
         st.subheader("使用的 Prompt")
         st.code(prompt)
+        st.subheader("API 回傳")
+        #st.code(answer)
 
 def main():
     mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽"])
