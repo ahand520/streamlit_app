@@ -122,6 +122,9 @@ def single_qa():
     display_to_folder = {folder_name_map.get(name, name): name for name in db_folders}
     selected_display = st.sidebar.selectbox("選擇向量資料庫資料夾", display_names)
     selected_db = display_to_folder[selected_display]
+    # reasoning_effort UI 選項
+    reasoning_effort = st.sidebar.selectbox("推理細緻度 (reasoning_effort)", ["low", "medium", "high"], index=1)
+
     if st.button("提交"):
         if not question:
             st.warning("請輸入問題")
@@ -174,13 +177,23 @@ def single_qa():
                 api_key = api_key,
                 base_url= api_base
             )
+            import time
+            start_time = time.time()
+            # 根據 chat_model 決定 system message
+            
+            if chat_model == "openai/gpt-oss-20b:free":
+                msg = [{"role": "system", "content": "你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題，reasoning_effort:low"}]
+            else:
+                msg = []
+            msg.append({"role": "user", "content": prompt})
             response = client.chat.completions.create(
                 model = chat_model,
-                messages=[
-                    {"role": "system", "content": "你是一個知識管理系統搜尋助理.推理過程請用繁體中文 Reasoning: low."},
-                    {"role": "user", "content": prompt}
-                    ],
+                messages= msg,
                 temperature=0.0,
+                extra_body={
+                    "reasoning": { "effort": reasoning_effort, "exclude": False },  # low/medium/high
+                    "include_reasoning": True                              # 回傳 <think/> 區塊
+                },
                 stream=True
             )
             #answer = response.choices[0].message
@@ -203,8 +216,43 @@ def single_qa():
                         if delta.content:
                             yield delta.content
             
-        st.header("回答")
-        st.write(stream_answer)        
+        # 分開 streaming 顯示推理過程與最終答案
+        if chat_model == "openai/gpt-oss-20b:free":
+            reasoning_container = st.container()
+            answer_container = st.container()
+            reasoning_text = ""
+            answer_text = ""
+            with reasoning_container:
+                st.header("推理過程")
+                reasoning_placeholder = st.empty()
+            with answer_container:
+                st.header("最終答案")
+                answer_placeholder = st.empty()
+            for chunk in response:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    r = getattr(delta, "reasoning", None)
+                    if r:
+                        reasoning_text += r
+                        reasoning_placeholder.write(reasoning_text)
+                    if delta.content:
+                        answer_text += delta.content
+                        answer_placeholder.write(answer_text)
+        else:
+            # 其他模型直接串流顯示答案
+            st.header("回答")
+            answer_placeholder = st.empty()
+            answer_text = ""
+            for chunk in response:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        answer_text += delta.content
+                        answer_placeholder.write(answer_text)
+        end_time = time.time()
+        elapsed = end_time - start_time
+        st.subheader("API 呼叫花費時間")
+        st.write(f"{elapsed:.2f} 秒")
         st.subheader("使用的 Prompt")
         st.code(prompt)
         st.subheader("API 回傳")
