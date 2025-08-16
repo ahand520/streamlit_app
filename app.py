@@ -13,8 +13,9 @@ if env == "local":
     api_base_embedding = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
     chat_model_options = [
         "openai/gpt-oss-120b",
-        "google/gemma-3-27b-it:free",
-        "mistralai/mistral-small-3.2-24b-instruct:free"
+        "openai/gpt-oss-20b",
+        "google/gemma-3-27b-it",
+        "mistralai/mistral-small-3.2-24b-instruct"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large-instruct")
@@ -34,7 +35,7 @@ else:
     api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
     # 模型選單
     chat_model_options = [
-        "openai/gpt-oss-20b",
+        "openai/gpt-oss-20b:free",
         "google/gemma-3-27b-it:free",
         "mistralai/mistral-small-3.2-24b-instruct:free"
     ]
@@ -192,7 +193,7 @@ def single_qa():
             start_time = time.time()
             # 根據 chat_model 決定 system message
             
-            if chat_model == "openai/gpt-oss-20b:free":
+            if chat_model.startswith("openai/gpt-oss"):
                 msg = [{"role": "system", "content": "你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題，reasoning_effort:low"}]
             else:
                 msg = []
@@ -234,7 +235,7 @@ def single_qa():
                     return val
             return None
         # 分開 streaming 顯示推理過程與最終答案
-        if chat_model == "openai/gpt-oss-120b":
+        if chat_model.startswith("openai/gpt-oss"):
             reasoning_container = st.container()
             answer_container = st.container()
             reasoning_text = ""
