@@ -1,7 +1,7 @@
 import os
 import json
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI,DefaultHttpxClient
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
@@ -10,9 +10,16 @@ env = st.secrets.get("RUN_ENV", "local")
 
 if env == "local":
     api_base = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
-    chat_model = st.secrets.get("LOCAL_CHAT_MODEL", "google/gemma-3-1b-it")
+    api_base_embedding = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
+    chat_model_options = [
+        "openai/gpt-oss-120b",
+        "google/gemma-3-27b-it:free",
+        "mistralai/mistral-small-3.2-24b-instruct:free"
+    ]
+    chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("LOCAL_EMBEDDING_MODEL", "intfloat/multilingual-e5-large-instruct")
     api_key = st.secrets.get("VLLM_API_KEY", "EMPTY")
+    api_key_embedding = st.secrets.get("VLLM_API_KEY", "EMPTY")
     check_embedding_ctx_length = False
 elif env == "cloud":
     api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
@@ -27,7 +34,7 @@ else:
     api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
     # 模型選單
     chat_model_options = [
-        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-20b",
         "google/gemma-3-27b-it:free",
         "mistralai/mistral-small-3.2-24b-instruct:free"
     ]
@@ -131,11 +138,13 @@ def single_qa():
             return
         with st.spinner("搜尋中..."):
             # 進行 embedding
+            http_client=DefaultHttpxClient(verify=False)
             embeddings = OpenAIEmbeddings(
                 check_embedding_ctx_length = check_embedding_ctx_length,
                 openai_api_base = api_base_embedding,
                 openai_api_key= api_key_embedding,
-                model= embedding_model,                
+                model= embedding_model,
+                http_client=http_client                
                 #show_progress_bar=True  # 顯示進度列
             )
             # 根據使用者選擇的子資料夾組成 db_path
@@ -172,10 +181,12 @@ def single_qa():
             )
             # 組成 prompt，使用自訂或預設 Prompt 範本
             prompt = custom_prompt.format(context_text=context_text, question=question)
+            http_client=DefaultHttpxClient(verify=False)
             # 呼叫 OpenAI ChatCompletion
             client = OpenAI(
                 api_key = api_key,
-                base_url= api_base
+                base_url= api_base, 
+                http_client=http_client
             )
             import time
             start_time = time.time()
@@ -215,9 +226,15 @@ def single_qa():
                         # 處理最終答案（content）
                         if delta.content:
                             yield delta.content
-            
+        def pick_reasoning(delta):
+            # 依序嘗試：reasoning_context → reasoning_content → reasoning
+            for key in ("reasoning_context", "reasoning_content", "reasoning"):
+                val = getattr(delta, key, None)
+                if val:
+                    return val
+            return None
         # 分開 streaming 顯示推理過程與最終答案
-        if chat_model == "openai/gpt-oss-20b:free":
+        if chat_model == "openai/gpt-oss-120b":
             reasoning_container = st.container()
             answer_container = st.container()
             reasoning_text = ""
@@ -231,7 +248,8 @@ def single_qa():
             for chunk in response:
                 if chunk.choices:
                     delta = chunk.choices[0].delta
-                    r = getattr(delta, "reasoning", None)
+                    r = pick_reasoning(delta)
+                    #getattr(delta, "reasoning_content", None)
                     if r:
                         reasoning_text += r
                         reasoning_placeholder.write(reasoning_text)
