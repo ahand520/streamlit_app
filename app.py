@@ -1,3 +1,12 @@
+import time
+from qa_utils import (
+    strip_leading_analysis_prefix,
+    parse_reasoning_from_message,
+    handle_streaming_response_openai,
+    handle_non_streaming_response_openai,
+    handle_streaming_response_other,
+    handle_non_streaming_response_other,
+)
 import os
 import json
 import streamlit as st
@@ -38,6 +47,7 @@ else:
     # 模型選單
     chat_model_options = [
         "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-120b:free",
         "google/gemma-3-27b-it:free",
         "mistralai/mistral-small-3.2-24b-instruct:free"
     ]
@@ -207,210 +217,41 @@ def single_qa():
                     "content": f"你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。reasoning_effort:{reasoning_effort}"
                 })
             msg.append({"role": "user", "content": prompt})
+            #print(msg)
+
+            # 計算 API 呼叫時間
+            start_time = time.time()
             response = client.chat.completions.create(
                 model = chat_model,
                 messages= msg,
                 temperature=0.0,                
                 extra_body={
+                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
                     "reasoning": { "effort": reasoning_effort, "exclude": False },  # low/medium/high
                     "include_reasoning": True                              # 回傳 <think/> 區塊
                 },
                 stream=use_stream
             )
-            import re
-            def parse_reasoning_from_message(msg_obj):
-                """同時相容舊欄位與新格式（content 內含 analysis / assistantfinal）。"""
-                # 1) 先試舊欄位：reasoning_context / reasoning_content / reasoning
-                for key in ("reasoning_context", "reasoning_content", "reasoning"):
-                    val = getattr(msg_obj, key, None)
-                    if isinstance(val, str) and val.strip():
-                        return val.strip(), (getattr(msg_obj, "content", None) or "").strip()
+            elapsed = time.time() - start_time
 
-                # 2) 若沒有舊欄位，就從 content 裡切 analysis / final
-                content = (getattr(msg_obj, "content", None) or "")
-                if not content:
-                    return "", ""
-
-                # 常見的新樣式：
-                #   "analysis....\n\nassistantfinal...."
-                # 有些模型會在最前面加 "analysis" 字頭
-                # 我們用 'assistantfinal' 當分隔點，再把前段的 "analysis" 字頭拿掉
-                marker = "assistantfinal"
-                i = content.find(marker)
-                if i != -1:
-                    analysis_part = content[:i]
-                    final_part = content[i + len(marker):]
-                    # 去掉前段開頭的 "analysis" 字頭（大小寫寬鬆、前後空白）
-                    analysis_part = re.sub(r"^\s*analysis\s*", "", analysis_part, flags=re.IGNORECASE).strip()
-                    final_part = final_part.strip()
-                    return analysis_part, final_part
-
-                # 3) 若也找不到 marker，就嘗試以 "analysis" 開頭粗略切分
-                m = re.match(r"^\s*analysis\s*(.*)", content, flags=re.IGNORECASE | re.DOTALL)
-                if m:
-                    # 只有 analysis，沒有明確 final；此時把整段視為推理，final 留空
-                    return m.group(1).strip(), ""
-
-                # 4) 完全沒有可辨識的分段：把整段視為 final
-                return "", content.strip()
-            reasoning_key_used = None
+            # 回答顯示
             if chat_model.startswith("openai/gpt-oss"):
                 if use_stream:
-                    # UI 區塊
-                    reasoning_container = st.container()
-                    answer_container = st.container()
-                    reasoning_text = ""
-                    answer_text = ""
-
-                    with reasoning_container:
-                        reasoning_header_placeholder = st.empty()
-                        reasoning_placeholder = st.empty()
-                    with answer_container:
-                        st.header("最終答案")
-                        answer_placeholder = st.empty()
-
-                    # 狀態旗標
-                    reasoning_key_used = None            # 舊式 reasoning 欄位的實際鍵名
-                    in_final_mode = False               # 是否已經遇到 'assistantfinal'
-                    stripped_analysis_prefix = False    # 是否已經把推理開頭的 'analysis' 去掉
-                    pending_content_buf = ""            # 用來暫存還未確定要丟哪邊的 content（在找到分隔符前）
-
-                    # 用來在第一次出現推理內容時，去除 'analysis' 前綴（大小寫寬鬆）
-                    def strip_leading_analysis_prefix(s: str) -> str:
-                        return re.sub(r"^\s*analysis\s*", "", s, flags=re.IGNORECASE).strip()
-
-                    # 主要串流處理
-                    for chunk in response:
-                        if not getattr(chunk, "choices", None):
-                            continue
-                        delta = chunk.choices[0].delta
-
-                        # 1) 先吃舊欄位（若模型有回）
-                        key_found = None
-                        for key in ("reasoning_context", "reasoning_content", "reasoning"):
-                            val = getattr(delta, key, None)
-                            if val:
-                                key_found = key
-                                break
-                        if key_found and reasoning_key_used is None:
-                            reasoning_key_used = key_found
-
-                        # 1a) 舊式 reasoning 欄位增量
-                        if key_found:
-                            r = getattr(delta, key_found, None)
-                            if r:
-                                if not stripped_analysis_prefix:
-                                    # 保險：有些模型仍可能從 "analysis" 開頭
-                                    r = strip_leading_analysis_prefix(r)
-                                    stripped_analysis_prefix = True
-                                reasoning_text += r
-                                reasoning_header_placeholder.header(f"推理過程（{len(reasoning_text)} 字）")
-                                reasoning_placeholder.write(reasoning_text)
-
-                        # 2) 新式：推理與答案都混在 delta.content，以 'assistantfinal' 分隔
-                        c = getattr(delta, "content", None)
-                        if c:
-                            if in_final_mode:
-                                # 已進入 final 區段：持續累加到答案
-                                answer_text += c
-                                answer_placeholder.write(answer_text)
-                            else:
-                                # 還沒遇到分隔符：先放入暫存
-                                pending_content_buf += c
-
-                                # 嘗試尋找分隔符（大小寫不敏感）
-                                # 例： "...analysis.....assistantfinal....."
-                                pattern = re.compile(r"assistantfinal", re.IGNORECASE)
-                                m = pattern.search(pending_content_buf)
-
-                                if m:
-                                    # 分成「推理片段」與「答案起始」
-                                    before = pending_content_buf[:m.start()]
-                                    after = pending_content_buf[m.end():]
-                                    in_final_mode = True
-                                    pending_content_buf = ""  # 已切開，清掉暫存
-
-                                    # 推理片段：去除開頭 'analysis'
-                                    if not stripped_analysis_prefix:
-                                        before = strip_leading_analysis_prefix(before)
-                                        stripped_analysis_prefix = True
-                                    reasoning_text += before.strip()
-                                    if reasoning_text:
-                                        reasoning_header_placeholder.header(f"推理過程（{len(reasoning_text)} 字）")
-                                        reasoning_placeholder.write(reasoning_text)
-
-                                    # 從分隔符之後開始，都是答案
-                                    answer_text += after
-                                    answer_placeholder.write(answer_text)
-                                else:
-                                    # 還沒找到分隔符：把目前暫存視為正在產生的推理
-                                    # 但為避免每一小塊都刷新整段，僅在「有合理長度或遇到換行」時刷新 UI
-                                    # 你也可以改成每次都刷新（更即時、但更耗效能）
-                                    if len(pending_content_buf) >= 64 or "\n" in pending_content_buf:
-                                        tmp = pending_content_buf
-                                        # 不要消耗 buffer，因為可能將來前段要併回（若永遠找不到分隔符，最後會把它當作推理）
-                                        if not stripped_analysis_prefix:
-                                            tmp = strip_leading_analysis_prefix(tmp)
-                                            stripped_analysis_prefix = True
-                                            # 注意：不改動 buffer 本身，以免日後切分位移
-                                        reasoning_text = (tmp if not in_final_mode else reasoning_text)
-                                        reasoning_header_placeholder.header(f"推理過程（{len(reasoning_text)} 字）")
-                                        reasoning_placeholder.write(reasoning_text)
-
-                    # 串流結束：若整段都沒遇到分隔符，就把暫存的 content 視為推理或答案
-                    if not in_final_mode and pending_content_buf:
-                        # 若到最後都沒有 'assistantfinal'，那就把暫存當成推理（去 analysis 前綴）
-                        tail = pending_content_buf
-                        if not stripped_analysis_prefix:
-                            tail = strip_leading_analysis_prefix(tail)
-                        reasoning_text += tail.strip()
-                        if reasoning_text:
-                            reasoning_header_placeholder.header(f"推理過程（{len(reasoning_text)} 字）")
-                            reasoning_placeholder.write(reasoning_text)
+                    handle_streaming_response_openai(response)
                 else:
-                    # 一次性取得完整回應
-                    st.header("最終答案")
-                    answer_placeholder = st.empty()
-                    reasoning_text = ""
-                    answer_text = ""
-                    # 呼叫 API 並取得完整 response
-                    result = response
-                    if result.choices:
-                        msg_obj = result.choices[0].message
-                        print(result)
-                        reasoning_text, answer_text = parse_reasoning_from_message(msg_obj)
-                    if reasoning_text:
-                        st.subheader(f"推理過程（{len(reasoning_text)} 字）")
-                        st.write(reasoning_text)
-                    answer_placeholder.write(answer_text or "")
+                    handle_non_streaming_response_openai(response)
             else:
                 if use_stream:
-                    st.header("回答")
-                    answer_placeholder = st.empty()
-                    answer_text = ""
-                    for chunk in response:
-                        if chunk.choices:
-                            delta = chunk.choices[0].delta
-                            if delta.content:
-                                answer_text += delta.content
-                                answer_placeholder.write(answer_text)
+                    handle_streaming_response_other(response)
                 else:
-                    st.header("回答")
-                    answer_placeholder = st.empty()
-                    answer_text = ""
-                    result = response
-                    if result.choices:
-                        msg_obj = result.choices[0].message
-                        if hasattr(msg_obj, "content") and msg_obj.content:
-                            answer_text = msg_obj.content
-                    answer_placeholder.write(answer_text)
-                if reasoning_key_used:
-                    st.write(f"{reasoning_key_used}")
-                else:
-                    st.write("本次未取得推理欄位內容")
+                    handle_non_streaming_response_other(response)
 
+            st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
             st.subheader("使用的 Prompt")
-            st.code(prompt)  
+            st.markdown(
+                f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{prompt}</div>",
+                unsafe_allow_html=True
+            )
 
 def main():
     mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽"])
