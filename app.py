@@ -253,10 +253,78 @@ def single_qa():
                 unsafe_allow_html=True
             )
 
+
+def log_test():
+    st.title("直接貼上 messages LOG 測試")
+    log_input = st.text_area("請貼上 messages JSON 內容（如：[{{...}}, ...] 或 {\"messages\": [...]}")
+    stream_response = st.sidebar.selectbox("回應模式", ["串流 (stream=True)", "一次輸出 (stream=False)"], index=0)
+    use_stream = stream_response == "串流 (stream=True)"
+    if st.button("送出 LOG 測試"):
+        if not log_input.strip():
+            st.warning("請貼上 messages JSON 內容")
+            return
+        raw = log_input.strip()
+        # 若只貼 "messages":[...] 這種格式，自動補上 {}
+        if raw.startswith('"messages"') or raw.startswith("'messages'"):
+            raw = '{' + raw + '}'
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and "messages" in data:
+                messages = data["messages"]
+            elif isinstance(data, list):
+                messages = data
+            else:
+                st.error("格式錯誤，請貼上 messages 陣列或含 messages 欄位的物件")
+                return
+        except Exception as e:
+            st.error(f"JSON 解析失敗: {e}")
+            return
+
+        http_client=DefaultHttpxClient(verify=ssl_verify)
+        client = OpenAI(
+            api_key = api_key,
+            base_url= api_base,
+            http_client=http_client
+        )
+        # 計時
+        start_time = time.time()
+        response = client.chat.completions.create(
+            model = chat_model,
+            messages=messages,
+            temperature=0.0,
+            extra_body={
+                "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] },
+                "reasoning": { "effort": "medium", "exclude": False },
+                "include_reasoning": True
+            },
+            stream=use_stream
+        )
+        elapsed = time.time() - start_time
+
+        if chat_model.startswith("openai/gpt-oss"):
+            if use_stream:
+                handle_streaming_response_openai(response)
+            else:
+                handle_non_streaming_response_openai(response)
+        else:
+            if use_stream:
+                handle_streaming_response_other(response)
+            else:
+                handle_non_streaming_response_other(response)
+
+        st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
+        st.subheader("messages 內容")
+        st.markdown(
+            f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{json.dumps(messages, ensure_ascii=False, indent=2)}</div>",
+            unsafe_allow_html=True
+        )
+
 def main():
-    mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽"])
+    mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽", "LOG 測試"])
     if mode == "JSON 批次結果瀏覽":
         browse_json()
+    elif mode == "LOG 測試":
+        log_test()
     else:
         single_qa()
 
