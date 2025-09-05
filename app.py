@@ -14,9 +14,9 @@ from openai import OpenAI,DefaultHttpxClient
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
-# 取得變數，預設為 cloud
-env = st.secrets.get("RUN_ENV", "local")
 
+env = st.secrets.get("RUN_ENV", "local")
+# 取得變數，預設為 cloud
 if env == "local":
     api_base = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
     api_base_embedding = st.secrets.get("LOCAL_API_BASE", "http://localhost:8000")
@@ -57,6 +57,10 @@ else:
     api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
     check_embedding_ctx_length = True
     ssl_verify = True
+    # 設定代理伺服器
+    proxy = st.secrets.get('proxy', 'http://sproxy.cht.com.tw:8080')
+    os.environ['http_proxy'] = proxy
+    os.environ['https_proxy'] = proxy
 
 
 # 載入 JSON 資料
@@ -259,12 +263,13 @@ def log_test():
     log_input = st.text_area("請貼上 messages JSON 內容（如：[{{...}}, ...] 或 {\"messages\": [...]}")
     stream_response = st.sidebar.selectbox("回應模式", ["串流 (stream=True)", "一次輸出 (stream=False)"], index=0)
     use_stream = stream_response == "串流 (stream=True)"
-    if st.button("送出 LOG 測試"):
+
+    # 解析按鈕
+    if st.button("解析 messages"):
         if not log_input.strip():
             st.warning("請貼上 messages JSON 內容")
             return
         raw = log_input.strip()
-        # 若只貼 "messages":[...] 這種格式，自動補上 {}
         if raw.startswith('"messages"') or raw.startswith("'messages'"):
             raw = '{' + raw + '}'
         try:
@@ -279,45 +284,58 @@ def log_test():
         except Exception as e:
             st.error(f"JSON 解析失敗: {e}")
             return
+        # 存進 session_state 以便後續顯示/編輯
+        st.session_state["log_messages_edit"] = messages
 
-        http_client=DefaultHttpxClient(verify=ssl_verify)
-        client = OpenAI(
-            api_key = api_key,
-            base_url= api_base,
-            http_client=http_client
-        )
-        # 計時
-        start_time = time.time()
-        response = client.chat.completions.create(
-            model = chat_model,
-            messages=messages,
-            temperature=0.0,
-            extra_body={
-                "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] },
-                "reasoning": { "effort": "medium", "exclude": False },
-                "include_reasoning": True
-            },
-            stream=use_stream
-        )
-        elapsed = time.time() - start_time
+    # 若已解析，顯示可編輯欄位
+    if "log_messages_edit" in st.session_state:
+        st.markdown("---")
+        st.write("可編輯每一組 role 與 content，確認無誤後再送出 LOG 測試：")
+        messages = st.session_state["log_messages_edit"]
+        new_messages = []
+        for i, msg in enumerate(messages):
+            role = st.text_input(f"role_{i}", value=msg.get("role", ""), key=f"role_{i}")
+            content = st.text_area(f"content_{i}", value=msg.get("content", ""), key=f"content_{i}")
+            new_messages.append({"role": role, "content": content})
+        # 送出按鈕
+        if st.button("送出 LOG 測試"):
+            http_client=DefaultHttpxClient(verify=ssl_verify)
+            client = OpenAI(
+                api_key = api_key,
+                base_url= api_base,
+                http_client=http_client
+            )
+            start_time = time.time()
+            response = client.chat.completions.create(
+                model = chat_model,
+                messages=new_messages,
+                temperature=0.0,
+                extra_body={
+                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] },
+                    "reasoning": { "effort": "medium", "exclude": False },
+                    "include_reasoning": True
+                },
+                stream=use_stream
+            )
+            elapsed = time.time() - start_time
 
-        if chat_model.startswith("openai/gpt-oss"):
-            if use_stream:
-                handle_streaming_response_openai(response)
+            if chat_model.startswith("openai/gpt-oss"):
+                if use_stream:
+                    handle_streaming_response_openai(response)
+                else:
+                    handle_non_streaming_response_openai(response)
             else:
-                handle_non_streaming_response_openai(response)
-        else:
-            if use_stream:
-                handle_streaming_response_other(response)
-            else:
-                handle_non_streaming_response_other(response)
+                if use_stream:
+                    handle_streaming_response_other(response)
+                else:
+                    handle_non_streaming_response_other(response)
 
-        st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
-        st.subheader("messages 內容")
-        st.markdown(
-            f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{json.dumps(messages, ensure_ascii=False, indent=2)}</div>",
-            unsafe_allow_html=True
-        )
+            st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
+            st.subheader("messages 內容")
+            st.markdown(
+                f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{json.dumps(new_messages, ensure_ascii=False, indent=2)}</div>",
+                unsafe_allow_html=True
+            )
 
 def main():
     mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽", "LOG 測試"])
