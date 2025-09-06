@@ -47,8 +47,9 @@ else:
     # 模型選單
     chat_model_options = [
         "openai/gpt-oss-20b:free",
-        "openai/gpt-oss-120b:free",
+        "openai/gpt-oss-120b",
         "google/gemma-3-27b-it:free",
+        "openai/gpt-4o",
         "mistralai/mistral-small-3.2-24b-instruct:free"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
@@ -221,14 +222,13 @@ def single_qa():
                     "content": f"你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。reasoning_effort:{reasoning_effort}"
                 })
             msg.append({"role": "user", "content": prompt})
-            #print(msg)
-
+           
             # 計算 API 呼叫時間
             start_time = time.time()
             response = client.chat.completions.create(
                 model = chat_model,
                 messages= msg,
-                temperature=0.0,                
+                temperature=0.1,        
                 extra_body={
                     "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
                     "reasoning": { "effort": reasoning_effort, "exclude": False },  # low/medium/high
@@ -270,19 +270,46 @@ def log_test():
             st.warning("請貼上 messages JSON 內容")
             return
         raw = log_input.strip()
-        if raw.startswith('"messages"') or raw.startswith("'messages'"):
-            raw = '{' + raw + '}'
+        messages = None
+        # 嘗試直接解析 JSON
         try:
             data = json.loads(raw)
             if isinstance(data, dict) and "messages" in data:
                 messages = data["messages"]
             elif isinstance(data, list):
                 messages = data
-            else:
-                st.error("格式錯誤，請貼上 messages 陣列或含 messages 欄位的物件")
-                return
-        except Exception as e:
-            st.error(f"JSON 解析失敗: {e}")
+        except Exception:
+            pass
+        # 若直接解析失敗，嘗試從 log 格式擷取
+        if messages is None:
+            import re
+            # 先找 request_body={...} 內容
+            req_match = re.search(r'request_body=({.*?})\s', raw, re.DOTALL)
+            if not req_match:
+                req_match = re.search(r'request_body=({.*})$', raw, re.DOTALL)
+            if req_match:
+                req_body = req_match.group(1)
+                # 修正可能的結尾缺 }
+                if req_body.count('{') > req_body.count('}'):
+                    req_body += '}' * (req_body.count('{') - req_body.count('}'))
+                try:
+                    req_json = json.loads(req_body)
+                    if isinstance(req_json, dict) and "messages" in req_json:
+                        messages = req_json["messages"]
+                except Exception:
+                    pass
+        # 若還是沒找到，嘗試直接找 "messages":[...]
+        if messages is None:
+            import re
+            msg_match = re.search(r'"messages"\s*:\s*(\[.*?\])', raw, re.DOTALL)
+            if msg_match:
+                msg_str = msg_match.group(1)
+                try:
+                    messages = json.loads(msg_str)
+                except Exception:
+                    pass
+        if not messages:
+            st.error("無法自動擷取 messages，請確認格式。支援 request_body=... 或 messages 陣列。")
             return
         # 存進 session_state 以便後續顯示/編輯
         st.session_state["log_messages_edit"] = messages
@@ -305,15 +332,16 @@ def log_test():
                 base_url= api_base,
                 http_client=http_client
             )
+            print(new_messages)
             start_time = time.time()
             response = client.chat.completions.create(
                 model = chat_model,
                 messages=new_messages,
-                temperature=0.0,
+                temperature = 0.1,
                 extra_body={
-                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] },
-                    "reasoning": { "effort": "medium", "exclude": False },
-                    "include_reasoning": True
+                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
+                    "reasoning": { "effort": 'low', "exclude": False },  # low/medium/high
+                    "include_reasoning": True                              # 回傳 <think/> 區塊
                 },
                 stream=use_stream
             )

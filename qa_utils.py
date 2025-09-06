@@ -39,6 +39,7 @@ def handle_streaming_response_openai(response):
         st.header("最終答案")
         answer_placeholder = st.empty()
     in_final_mode = False
+    is_reasoning_seperate = False
     stripped_analysis_prefix = False
     pending_content_buf = ""
     for chunk in response:
@@ -50,6 +51,8 @@ def handle_streaming_response_openai(response):
             val = getattr(delta, key, None)
             if val:
                 key_found = key
+                if not is_reasoning_seperate:
+                    is_reasoning_seperate = True
                 break
         if key_found:
             r = getattr(delta, key_found, None)
@@ -60,9 +63,10 @@ def handle_streaming_response_openai(response):
                 reasoning_text += r
                 reasoning_header_placeholder.header(f"推理過程（{len(reasoning_text)} 字）")
                 reasoning_placeholder.write(reasoning_text)
+        
         c = getattr(delta, "content", None)
         if c:
-            if in_final_mode:
+            if in_final_mode or is_reasoning_seperate:
                 answer_text += c
                 answer_placeholder.write(answer_text)
             else:
