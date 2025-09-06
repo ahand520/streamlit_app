@@ -1,7 +1,5 @@
 import time
 from qa_utils import (
-    strip_leading_analysis_prefix,
-    parse_reasoning_from_message,
     handle_streaming_response_openai,
     handle_non_streaming_response_openai,
     handle_streaming_response_other,
@@ -24,6 +22,7 @@ if env == "local":
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
         "google/gemma-3-27b-it",
+        "google/gemma-3-1b-it",
         "mistralai/mistral-small-3.2-24b-instruct"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
@@ -35,10 +34,18 @@ if env == "local":
 elif env == "cloud":
     api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     api_base = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
-    chat_model = st.secrets.get("OPENAI_CHAT_MODEL", "gpt-4o")
+    # 模型選單
+    chat_model_options = [
+        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-120b",
+        "google/gemma-3-27b-it:free",
+        "openai/gpt-4o",
+        "mistralai/mistral-small-3.2-24b-instruct:free"
+    ]
+    chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
     api_key_embedding = st.secrets.get("OPENAI_API_KEY", "EMPTY")
-    api_key = st.secrets.get("OPENAI_API_KEY", "EMPTY")
+    api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
     check_embedding_ctx_length = True
     ssl_verify = True
 else:
