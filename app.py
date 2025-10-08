@@ -49,7 +49,7 @@ elif env == "cloud":
     check_embedding_ctx_length = True
     ssl_verify = True
 else:
-    api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    api_base_embedding = st.secrets.get("LOCAL_API_BASE", "https://api.openai.com/v1")
     api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
     # 模型選單
     chat_model_options = [
@@ -61,15 +61,22 @@ else:
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("OPENROUTER_EMBEDDING_MODEL", "text-embedding-3-large")
-    api_key_embedding = st.secrets.get("OPENAI_API_KEY", "EMPTY")
+    api_key_embedding = st.secrets.get("VLLM_API_KEY", "EMPTY")
     api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
-    check_embedding_ctx_length = True
-    ssl_verify = True
+    check_embedding_ctx_length = False
+    ssl_verify = False
     # 設定代理伺服器
     proxy = st.secrets.get('proxy', 'http://sproxy.cht.com.tw:8080')
     os.environ['http_proxy'] = proxy
     os.environ['https_proxy'] = proxy
-
+    # 指定不走 proxy 的 domain 或 IP
+    no_proxy_list = [
+        'jkm-llm.nat.fia.gov.tw',  # 只寫 domain，不要加 https:// 與路徑
+        'localhost',
+        '127.0.0.1',
+        '10.97.59.123'
+    ]
+    os.environ['no_proxy'] = ','.join(no_proxy_list)
 
 # 載入 JSON 資料
 def load_json_data(filename):
@@ -142,8 +149,11 @@ def single_qa():
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
     folder_name_map = {
         "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",
-        "text-embedding-3-large_c1000_o200_KS": "高雄國稅局-text-embedding-3-large",
-        "text-embedding-3-large_c1000_o200_all": "全部-text-embedding-3-large"
+        "text-embedding-3-large_c1000_o200_TP": "台北國稅局-text-embedding-3-large",        
+        "text-embedding-3-large_c1000_o200_all": "全部-text-embedding-3-large",
+        "text-embeddings-inference_c1000_o200_TP": "台北國稅局-embeddinggemma",
+        "text-embeddings-inference_c1000_o200_KS": "高雄國稅局-embeddinggemma",
+        "multilingual-e5-large-instruct_c500_o100": "高雄國稅局-multilingual-e5-large-instruct"
     }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
@@ -205,7 +215,8 @@ def single_qa():
                     "來源標記": {
                         "來源檔案": item["metadata"].get("source", "未知"),
                         "頁數起迄": item["metadata"].get("page_range", "未知")
-                    }
+                    },
+                    "相似度": float(item["score"])
                 }
                 for idx, item in enumerate(formatted_results)
             ]
