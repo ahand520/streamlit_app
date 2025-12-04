@@ -148,12 +148,9 @@ def single_qa():
     # 在側邊欄選擇 Vector DB 資料夾，並僅於切換時載入
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
     folder_name_map = {
-        "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",
-        "text-embedding-3-large_c1000_o200_TP": "台北國稅局-text-embedding-3-large",        
+        "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",        
         "text-embedding-3-large_c1000_o200_all": "全部-text-embedding-3-large",
-        "text-embeddings-inference_c1000_o200_TP": "台北國稅局-embeddinggemma",
-        "text-embeddings-inference_c1000_o200_KS": "高雄國稅局-embeddinggemma",
-        "multilingual-e5-large-instruct_c500_o100": "高雄國稅局-multilingual-e5-large-instruct"
+        "embeddinggemma-300m_c1000_o200_all": "全部-embeddinggemma",
     }
     try:
         db_folders = [name for name in os.listdir(db_base) if os.path.isdir(os.path.join(db_base, name))]
