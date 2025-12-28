@@ -23,6 +23,7 @@ if env == "local":
         "openai/gpt-oss-20b",
         "google/gemma-3-27b-it",
         "google/gemma-3-1b-it",
+        "mistralai/ministral-3-3b-instruct-2512",
         "mistralai/mistral-small-3.2-24b-instruct"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
