@@ -33,7 +33,7 @@ if env == "local":
     check_embedding_ctx_length = False
     ssl_verify = False
 elif env == "cloud":
-    api_base_embedding = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    api_base_embedding = st.secrets.get("LOCAL_API_BASE", "http://localhost:8888/v1")
     api_base = st.secrets.get("OPENAI_API_BASE", "https://api.openai.com/v1")
     # 模型選單
     chat_model_options = [
@@ -50,18 +50,17 @@ elif env == "cloud":
     check_embedding_ctx_length = True
     ssl_verify = True
 else:
-    api_base_embedding = st.secrets.get("LOCAL_API_BASE", "https://api.openai.com/v1")
+    api_base_embedding = st.secrets.get("LOCAL_API_BASE", "http://localhost:8888/v1")
     api_base = st.secrets.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
     # 模型選單
     chat_model_options = [
-        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-20b",
         "openai/gpt-oss-120b",
-        "google/gemma-3-27b-it:free",
-        "openai/gpt-4o",
-        "mistralai/mistral-small-3.2-24b-instruct:free"
+        "google/gemma-4-26b-a4b-it",
+        "google/gemma-3-27b-it"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
-    embedding_model = st.secrets.get("OPENROUTER_EMBEDDING_MODEL", "text-embedding-3-large")
+    embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "google/embeddinggemma-300m")
     api_key_embedding = st.secrets.get("VLLM_API_KEY", "EMPTY")
     api_key = st.secrets.get("OPENROUTER_API_KEY", "EMPTY")
     check_embedding_ctx_length = False
@@ -149,8 +148,6 @@ def single_qa():
     # 在側邊欄選擇 Vector DB 資料夾，並僅於切換時載入
     db_base = os.path.join(os.path.dirname(__file__), "vector_db")
     folder_name_map = {
-        "e5-mistral-7b-instruct_c1000_o200_all": "全部-e5-mistral",        
-        "text-embedding-3-large_c1000_o200_all": "全部-text-embedding-3-large",
         "embeddinggemma-300m_c1000_o200_all": "全部-embeddinggemma",
     }
     try:
@@ -232,11 +229,11 @@ def single_qa():
                 http_client=http_client
             )
             msg = []
-            if chat_model.startswith("openai/gpt-oss"):
-                msg.append({
+            msg.append({
                     "role": "system",
-                    "content": f"你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。reasoning_effort:{reasoning_effort}"
+                    "content": f"Only think when necessary. Keep reasoning brief. 你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。"
                 })
+                
             msg.append({"role": "user", "content": prompt})
            
             # 計算 API 呼叫時間
@@ -246,16 +243,16 @@ def single_qa():
                 messages= msg,
                 temperature=0.1,        
                 extra_body={
-                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
-                    "reasoning": { "effort": reasoning_effort, "exclude": False },  # low/medium/high
-                    "include_reasoning": True                              # 回傳 <think/> 區塊
+                    "provider": { "order": ["novita/bf16"] } ,
+                    "reasoning": {"enabled": True}
                 },
                 stream=use_stream
             )
+            
             elapsed = time.time() - start_time
 
             # 回答顯示
-            if chat_model.startswith("openai/gpt-oss"):
+            if chat_model.startswith("openai/gpt-oss") or chat_model.startswith("google/gemma-4-26b-a4b-it"):
                 if use_stream:
                     handle_streaming_response_openai(response)
                 else:
@@ -357,7 +354,8 @@ def log_test():
                 extra_body={
                     "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
                     "reasoning": { "effort": 'low', "exclude": False },  # low/medium/high
-                    "include_reasoning": True                              # 回傳 <think/> 區塊
+                    "include_reasoning": True ,                             # 回傳 <think/> 區塊
+                    "chat_template_kwargs": { "enable_thinking": True}
                 },
                 stream=use_stream
             )
