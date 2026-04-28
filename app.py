@@ -8,7 +8,7 @@ from qa_utils import (
 import os
 import json
 import streamlit as st
-from openai import OpenAI,DefaultHttpxClient
+from openai import BadRequestError, OpenAI,DefaultHttpxClient
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
@@ -56,8 +56,7 @@ else:
     chat_model_options = [
         "openai/gpt-oss-20b",
         "openai/gpt-oss-120b",
-        "google/gemma-4-26b-a4b-it",
-        "google/gemma-3-27b-it"
+        "google/gemma-4-26b-a4b-it"
     ]
     chat_model = st.sidebar.selectbox("選擇 Chat 模型", chat_model_options, index=0)
     embedding_model = st.secrets.get("OPENAI_EMBEDDING_MODEL", "google/embeddinggemma-300m")
@@ -78,46 +77,21 @@ else:
     ]
     os.environ['no_proxy'] = ','.join(no_proxy_list)
 
-# 載入 JSON 資料
-def load_json_data(filename):
-    base_dir = os.path.dirname(__file__)
-    file_path = os.path.join(base_dir, filename)
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data
-
-def browse_json():
-    st.title("JSON 問題瀏覽")
-    uploaded_file = st.sidebar.file_uploader("上傳 JSON 檔案 (檔名勿帶有中文)", type=["json"])
-    if uploaded_file is None:
-        st.info("請在側邊欄上傳 JSON 檔案")
-        return
-    try:
-        data = json.load(uploaded_file)
-    except Exception as e:
-        st.error(f"讀取 JSON 失敗: {e}")
-        return
-    questions = [item.get("question", "") for item in data]
-    if not questions:
-        st.warning("此 JSON 檔案無任何問題")
-        return
-    selected_q = st.sidebar.selectbox("選擇問題", questions)
-    idx = questions.index(selected_q)
-    item = data[idx]
-    st.header("問題")
-    st.write(selected_q)
-    st.header("回答")
-    st.write(item.get("answer", ""))
-    st.header("相關內容")
-    st.write(item.get("context_texts", ""))
-    #for ctx in item.get("context_text", []):
-    #    st.text(ctx)
-    #    st.markdown("-------------------------------------------")
-
 def single_qa():
     # 新增 stream 選項
     stream_response = st.sidebar.selectbox("回應模式", ["串流 (stream=True)", "一次輸出 (stream=False)"], index=0)
     use_stream = stream_response == "串流 (stream=True)"
+    is_gemma_reasoning_model = chat_model == "google/gemma-4-26b-a4b-it"
+    is_gpt_oss_reasoning_model = chat_model in {"openai/gpt-oss-20b", "openai/gpt-oss-120b"}
+    is_reasoning_mandatory_model = is_gemma_reasoning_model
+    reasoning_enabled = st.sidebar.checkbox(
+        "啟用 reasoning",
+        value=True,
+        disabled=True,
+        help="google/gemma-4-26b-a4b-it 的目前 endpoint 強制啟用 reasoning；其他模型目前也固定為啟用。",
+    )
+    if is_gemma_reasoning_model:
+        st.sidebar.caption("google/gemma-4-26b-a4b-it 目前無法關閉 reasoning。")
     st.title("單次問答")
     question = st.text_input("請輸入您的問題")
     # 選擇要搜尋的 Top-k 文件數
@@ -180,10 +154,17 @@ def single_qa():
         else:
             st.session_state["vector_store"] = None
     store = st.session_state.get("vector_store", None)
-    # reasoning_effort UI 選項
-    reasoning_effort = st.sidebar.selectbox("推理細緻度 (reasoning_effort)", ["low", "medium", "high"], index=1)
+    # reasoning_effort 僅在 gpt-oss 模型可調整
+    reasoning_effort = st.sidebar.selectbox(
+        "推理細緻度 (reasoning_effort)",
+        ["low", "medium", "high"],
+        index=1,
+        disabled=not is_gpt_oss_reasoning_model,
+        help="僅 openai/gpt-oss-20b 與 openai/gpt-oss-120b 會使用此選項。",
+    )
 
     if st.button("提交"):
+        total_start_time = time.perf_counter()
         if not question:
             st.warning("請輸入問題")
             return
@@ -191,6 +172,7 @@ def single_qa():
             st.error("尚未載入向量資料庫，請先選擇並載入。")
             return
         with st.spinner("搜尋中..."):
+            retrieval_start_time = time.perf_counter()
             # 取得文件與相似度分數
             results = store.similarity_search_with_score(question, k=top_k)
             #st.write("[DEBUG] similarity_search_with_score results:", results)
@@ -221,6 +203,7 @@ def single_qa():
             #st.write("[DEBUG] context_text:", context_text)
             # 組成 prompt，使用自訂或預設 Prompt 範本
             prompt = custom_prompt.format(context_text=context_text, question=question)
+            retrieval_elapsed = time.perf_counter() - retrieval_start_time
             #st.write("[DEBUG] prompt:", prompt)
             http_client=DefaultHttpxClient(verify=ssl_verify)
             client = OpenAI(
@@ -231,162 +214,70 @@ def single_qa():
             msg = []
             msg.append({
                     "role": "system",
-                    "content": f"Only think when necessary. Keep reasoning brief. 你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。"
+                    "content": f"你是一個有推理能力的知識管理系統搜尋助理，請根據相關文字內容回答問題。"
                 })
                 
             msg.append({"role": "user", "content": prompt})
+
+            extra_body = {
+                "provider": {"order": ["novita/bf16"]},
+                "reasoning": {"enabled": True if is_reasoning_mandatory_model else reasoning_enabled},
+            }
+            if is_gpt_oss_reasoning_model:
+                extra_body["reasoning"]["effort"] = reasoning_effort
            
-            # 計算 API 呼叫時間
-            start_time = time.time()
-            response = client.chat.completions.create(
-                model = chat_model,
-                messages= msg,
-                temperature=0.1,        
-                extra_body={
-                    "provider": { "order": ["novita/bf16"] } ,
-                    "reasoning": {"enabled": True}
-                },
-                stream=use_stream
-            )
-            
-            elapsed = time.time() - start_time
+            api_request_start_time = time.perf_counter()
+            try:
+                response = client.chat.completions.create(
+                    model = chat_model,
+                    messages= msg,
+                    temperature=0.1,        
+                    extra_body=extra_body,
+                    stream=use_stream
+                )
+            except BadRequestError as exc:
+                st.error(f"API 請求失敗：{exc}")
+                return
+            api_request_elapsed = time.perf_counter() - api_request_start_time
 
             # 回答顯示
             if chat_model.startswith("openai/gpt-oss") or chat_model.startswith("google/gemma-4-26b-a4b-it"):
                 if use_stream:
-                    handle_streaming_response_openai(response)
+                    response_metrics = handle_streaming_response_openai(
+                        response,
+                        request_start_time=api_request_start_time,
+                    )
                 else:
-                    handle_non_streaming_response_openai(response)
+                    response_metrics = handle_non_streaming_response_openai(response)
             else:
                 if use_stream:
-                    handle_streaming_response_other(response)
+                    response_metrics = handle_streaming_response_other(
+                        response,
+                        request_start_time=api_request_start_time,
+                    )
                 else:
-                    handle_non_streaming_response_other(response)
+                    response_metrics = handle_non_streaming_response_other(response)
 
-            st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
+            total_elapsed = time.perf_counter() - total_start_time
+
+            timing_lines = [
+                f"整體等待時間：{total_elapsed:.2f} 秒",
+                f"檢索與提示組裝：{retrieval_elapsed:.2f} 秒",
+                f"API 建立回應：{api_request_elapsed:.2f} 秒",
+            ]
+            if use_stream and response_metrics.get("first_token_latency") is not None:
+                timing_lines.append(f"串流首字出現：{response_metrics['first_token_latency']:.3f} 秒")
+                timing_lines.append(f"串流完整輸出：{response_metrics['response_render_time']:.2f} 秒")
+            else:
+                timing_lines.append(f"回應渲染時間：{response_metrics['response_render_time']:.2f} 秒")
+            st.info("\n".join(timing_lines))
             st.subheader("使用的 Prompt")
             st.markdown(
                 f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{prompt}</div>",
                 unsafe_allow_html=True
             )
-
-
-def log_test():
-    st.title("直接貼上 messages LOG 測試")
-    log_input = st.text_area("請貼上 messages JSON 內容（如：[{{...}}, ...] 或 {\"messages\": [...]}")
-    stream_response = st.sidebar.selectbox("回應模式", ["串流 (stream=True)", "一次輸出 (stream=False)"], index=0)
-    use_stream = stream_response == "串流 (stream=True)"
-
-    # 解析按鈕
-    if st.button("解析 messages"):
-        if not log_input.strip():
-            st.warning("請貼上 messages JSON 內容")
-            return
-        raw = log_input.strip()
-        messages = None
-        # 嘗試直接解析 JSON
-        try:
-            data = json.loads(raw)
-            if isinstance(data, dict) and "messages" in data:
-                messages = data["messages"]
-            elif isinstance(data, list):
-                messages = data
-        except Exception:
-            pass
-        # 若直接解析失敗，嘗試從 log 格式擷取
-        if messages is None:
-            import re
-            # 先找 request_body={...} 內容
-            req_match = re.search(r'request_body=({.*?})\s', raw, re.DOTALL)
-            if not req_match:
-                req_match = re.search(r'request_body=({.*})$', raw, re.DOTALL)
-            if req_match:
-                req_body = req_match.group(1)
-                # 修正可能的結尾缺 }
-                if req_body.count('{') > req_body.count('}'):
-                    req_body += '}' * (req_body.count('{') - req_body.count('}'))
-                try:
-                    req_json = json.loads(req_body)
-                    if isinstance(req_json, dict) and "messages" in req_json:
-                        messages = req_json["messages"]
-                except Exception:
-                    pass
-        # 若還是沒找到，嘗試直接找 "messages":[...]
-        if messages is None:
-            import re
-            msg_match = re.search(r'"messages"\s*:\s*(\[.*?\])', raw, re.DOTALL)
-            if msg_match:
-                msg_str = msg_match.group(1)
-                try:
-                    messages = json.loads(msg_str)
-                except Exception:
-                    pass
-        if not messages:
-            st.error("無法自動擷取 messages，請確認格式。支援 request_body=... 或 messages 陣列。")
-            return
-        # 存進 session_state 以便後續顯示/編輯
-        st.session_state["log_messages_edit"] = messages
-
-    # 若已解析，顯示可編輯欄位
-    if "log_messages_edit" in st.session_state:
-        st.markdown("---")
-        st.write("可編輯每一組 role 與 content，確認無誤後再送出 LOG 測試：")
-        messages = st.session_state["log_messages_edit"]
-        new_messages = []
-        for i, msg in enumerate(messages):
-            role = st.text_input(f"role_{i}", value=msg.get("role", ""), key=f"role_{i}")
-            content = st.text_area(f"content_{i}", value=msg.get("content", ""), key=f"content_{i}")
-            new_messages.append({"role": role, "content": content})
-        # 送出按鈕
-        if st.button("送出 LOG 測試"):
-            http_client=DefaultHttpxClient(verify=ssl_verify)
-            client = OpenAI(
-                api_key = api_key,
-                base_url= api_base,
-                http_client=http_client
-            )
-            print(new_messages)
-            start_time = time.time()
-            response = client.chat.completions.create(
-                model = chat_model,
-                messages=new_messages,
-                temperature = 0.1,
-                extra_body={
-                    "provider": { "order": ["google-ai-studio","atlas-cloud/fp8","open-inference/int8"] } ,
-                    "reasoning": { "effort": 'low', "exclude": False },  # low/medium/high
-                    "include_reasoning": True ,                             # 回傳 <think/> 區塊
-                    "chat_template_kwargs": { "enable_thinking": True}
-                },
-                stream=use_stream
-            )
-            elapsed = time.time() - start_time
-
-            if chat_model.startswith("openai/gpt-oss"):
-                if use_stream:
-                    handle_streaming_response_openai(response)
-                else:
-                    handle_non_streaming_response_openai(response)
-            else:
-                if use_stream:
-                    handle_streaming_response_other(response)
-                else:
-                    handle_non_streaming_response_other(response)
-
-            st.info(f"API 呼叫花費時間：{elapsed:.2f} 秒")
-            st.subheader("messages 內容")
-            st.markdown(
-                f"<div style='white-space:pre-wrap; word-break:break-all; font-family:monospace; background:#f0f0f0; padding:8px; border-radius:4px'>{json.dumps(new_messages, ensure_ascii=False, indent=2)}</div>",
-                unsafe_allow_html=True
-            )
-
 def main():
-    mode = st.sidebar.selectbox("選擇功能", ["單次問答", "JSON 批次結果瀏覽", "LOG 測試"])
-    if mode == "JSON 批次結果瀏覽":
-        browse_json()
-    elif mode == "LOG 測試":
-        log_test()
-    else:
-        single_qa()
+    single_qa()
 
 if __name__ == "__main__":
     main()
